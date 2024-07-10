@@ -156,20 +156,20 @@ def generate_square_subsequent_mask(sz):
     mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
     return mask
 
-def main(embed_dir, data_file, output_dir, dataset_class, data_handler):
+def main(embed_file, train_file, embed_dir, output_dir, dataset_class, data_handler):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Create embeddings if they don't exist
     if not os.path.exists(os.path.join(embed_dir, 'embeddings.pth')):
         print("Creating embeddings...")
-        vocab, embedding_matrix = data_handler.create_embeddings('corpus.txt', embed_dir)
+        vocab, embedding_matrix = data_handler.create_embeddings(embed_file, embed_dir)
     else:
-        # Load vocabulary and embeddings
+        print("Loading existing embeddings...")
         vocab = torch.load(os.path.join(embed_dir, 'vocab.pth'))
         embedding_matrix = torch.load(os.path.join(embed_dir, 'embeddings.pth'))
     
     # Create dataset and split into train and validation
-    dataset = dataset_class(data_file, vocab, data_handler)
+    dataset = dataset_class(train_file, vocab, data_handler)
     train_data, val_data = train_test_split(dataset, test_size=VALIDATION_SPLIT, random_state=42)
     train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=BATCH_SIZE)
@@ -208,8 +208,9 @@ def main(embed_dir, data_file, output_dir, dataset_class, data_handler):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train GPT model")
+    parser.add_argument("embed_file", help="Path to file for creating embeddings")
+    parser.add_argument("train_file", help="Path to file for training the model")
     parser.add_argument("embed_dir", help="Path to embeddings directory")
-    parser.add_argument("data_file", help="Path to data file")
     parser.add_argument("output_dir", help="Path to output directory")
     parser.add_argument("domain", help="Domain of the data (e.g., chess, sanskrit, hebrew)")
     args = parser.parse_args()
@@ -230,4 +231,4 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unsupported domain: {args.domain}")
     
-    main(args.embed_dir, args.data_file, args.output_dir, dataset_class, data_handler)
+    main(args.embed_file, args.train_file, args.embed_dir, args.output_dir, dataset_class, data_handler)
