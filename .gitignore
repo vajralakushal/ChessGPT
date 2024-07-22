@@ -1,4 +1,8 @@
 /data
-/2023–03.pgn
+2023-03.pgn
 /pgn-extract.exe
 /.history
+/__pycache__
+/corpus_file_1m.pgn
+/embeddings
+/model_output
