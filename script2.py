@@ -27,7 +27,7 @@ class Vocab:
     def __len__(self):
         return len(self.token2idx)
 
-# New ChessState class to represent the game state
+
 class ChessState:
     def __init__(self):
         self.board = chess.Board()
@@ -47,8 +47,7 @@ class ChessState:
     def to_fen(self):
         return self.board.fen()
 
-# Modified ChessDataset class
-# Modified ChessDataset class
+
 class ChessDataset(Dataset):
     def __init__(self, data, vocab, max_len=200):
         self.vocab = vocab
@@ -63,6 +62,7 @@ class ChessDataset(Dataset):
             valid_game = []
             try:
                 for move in moves:
+                    #weird issue where I was having illegal moves in my games that should not have been there.
                     if move not in state.get_legal_moves():
                         print(f"Skipping game {idx + 1} due to illegal move: {move}")
                         raise ValueError("Illegal move")
@@ -77,9 +77,9 @@ class ChessDataset(Dataset):
 
     def __getitem__(self, idx):
         game = self.valid_games[idx]
-        input_seq = torch.tensor([self.vocab.token2idx['<SOS>']])  # Changed from '< SOS >' to '<SOS>'
+        input_seq = torch.tensor([self.vocab.token2idx['<SOS>']])
         board_states = []
-        output_seq = torch.tensor([self.vocab.token2idx['<SOS>']])  # Changed from '< SOS >' to '<SOS>'
+        output_seq = torch.tensor([self.vocab.token2idx['<SOS>']])
         
         for board_state, move in game[:self.max_len-1]:
             board_states.append(torch.tensor(board_state))
@@ -96,7 +96,12 @@ class ChessDataset(Dataset):
             board_states = torch.cat([board_states, torch.zeros(self.max_len - 1 - len(board_states), 64)])
         
         return input_seq, board_states, output_seq
-# Function to create embeddings (unchanged)
+
+"""
+corpus_file: your corpus file from which the vocabulary and embeddings are created
+
+output_dir: where you will place the vocab and embeddings, if they are not already created. If the directory does not exist, this will make them for you
+"""
 def create_embeddings(corpus_file, output_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -110,11 +115,7 @@ def create_embeddings(corpus_file, output_dir):
         embedding_matrix = torch.load(embeddings_path)
         return vocab, embedding_matrix
 
-    print("Creating new embeddings...")
-    with open(corpus_file, 'r') as f:
-        sentences = [line.strip().split() for line in f]
-
-    model = Word2Vec(sentences, vector_size=256, window=5, min_count=1, workers=4, epochs=10)
+    model = Word2Vec(corpus_file=corpus_file, vector_size=256, window=5, min_count=1, workers=4, epochs=10)
 
     vocab = Vocab()
     embedding_dict = {}
@@ -141,6 +142,9 @@ def create_embeddings(corpus_file, output_dir):
 
     return vocab, embedding_matrix
 
+"""
+This idea came about when I figured encapsulating the state of the board would help with better predictions
+"""
 def encode_board_state(board):
     piece_to_index = {
         'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
@@ -153,7 +157,7 @@ def encode_board_state(board):
             state[i] = piece_to_index[piece.symbol()]
     return state
 
-# Modified Transformer model
+
 class ChessTransformer(nn.Module):
     def __init__(self, vocab_size, embed_size, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward):
         super().__init__()
@@ -194,7 +198,11 @@ class ChessTransformer(nn.Module):
         output = self.transformer(src, tgt)  # [seq_len, batch_size, embed_size]
         return self.fc_out(output.transpose(0, 1))  # [batch_size, seq_len, vocab_size]
 
-# New PositionalEncoding class
+
+"""
+I thought the transformer model already accounted for this?
+But Claude suggested it, and it DID improve my predictions somewhat so...
+"""
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
@@ -212,8 +220,9 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
-# Modified training function
+
 def train_model(model, train_loader, criterion, optimizer, device, num_epochs=20):
+    # was initially confused with model.train(). Turns out that it simply sets the module into training mode.
     model.train()
     for epoch in range(num_epochs):
         total_loss = 0
@@ -243,6 +252,8 @@ def train_model(model, train_loader, criterion, optimizer, device, num_epochs=20
 
 
 # New function for beam search
+# https://en.wikipedia.org/wiki/Beam_search
+# Seems like you would need it for something like chess, where you can't encapsulate future states easily.
 def beam_search(model, initial_state, vocab, device, beam_width=3, max_length=10):
     model.eval()
     initial_input = torch.tensor([vocab.token2idx['<SOS>']]).unsqueeze(0).to(device)  # Changed from '< SOS >' to '<SOS>'
@@ -316,7 +327,7 @@ def main():
         print("No valid games found in the dataset. Please check your data.")
         sys.exit(1)
 
-    # Modified DataLoader
+    
     def collate_fn(batch):
         # Unzip the batch into separate lists
         input_seqs, board_states, output_seqs = zip(*batch)
@@ -346,13 +357,14 @@ def main():
     optimizer = Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
     train_model(model, train_loader, criterion, optimizer, device)
 
-    # Save model
+    # Save model in the directory, and create the directory if it doesn't exist
     if not os.path.exists(model_output_dir):
         os.makedirs(model_output_dir)
     torch.save(model.state_dict(), os.path.join(model_output_dir, 'chess_model.pth'))
     print(f"Model saved to {os.path.join(model_output_dir, 'chess_model.pth')}")
 
     # Simple chess game interaction
+    # Need to flesh out this implementation later.
     model.eval()
     print("Let's play chess! Type 'exit' to quit.")
     player_color = input("Choose your color (white/black): ").lower()
